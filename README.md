@@ -1,101 +1,67 @@
-# 🍞 BreadGuard AI - Bread Shelf Life & Spoilage Monitoring Dashboard
+# Bread freshness demonstration
 
-A multimodal IoT and Computer Vision dashboard designed to predict bread shelf life and spoilage by combining **Arduino gas sensors (MQ-135 and MQ-2)** with **camera imaging (Laptop Webcam or External USB Camera)** and a trained **AI Multimodal Model**.
+One objective: train on synthetic gas readings and synthetic bread images, collect actual sensor readings to CSV without saving photos, and demonstrate trained gas inference alongside a real camera view.
 
----
+The combined project lives here in `Documents/FoodShelfLife`. It uses the GitHub Random Forest feature pipeline and CV analyzer, with the local Streamlit frontend. The separate original `bread_dataset` workspace is preserved.
 
-## 🌟 Key Features
+## Run
 
-1. **Dual Camera Input Selection**:
-   - **💻 Laptop Webcam (Default)**: Uses the integrated laptop camera for immediate convenience.
-   - **📹 External USB Camera**: Allows switching to an external camera attached to your bread enclosure or test chamber.
-   - **Device Dropdown**: Automatically detects and lists all connected video devices.
-   - **Live HUD Viewport**: Features targeting reticle ("Align Bread Sample") and shutter flash animation.
-   - **Alternate Modes**: Supports selecting historical bread samples from the dataset or uploading custom bread photos.
-
-2. **Arduino Serial Telemetry Integration**:
-   - Connects to Arduino via serial communication (`COM5`, 9600 baud, matching `bread_data_collection.py`).
-   - Real-time continuous background thread reading `mq135` and `mq2` telemetry.
-   - **Dynamic Port Scanner**: Scan and select any active COM port directly from the dashboard.
-   - **Realistic Simulation Fallback**: If Arduino is unplugged or busy, the system automatically runs in simulation mode using the real 70-hour experimental dataset (`sensor_data.csv`), ensuring zero interruptions during testing.
-
-3. **Multimodal Machine Learning & Vision Model**:
-   - **Machine Learning Regressor**: Random Forest model trained on the chronological 70-hour `sensor_data.csv` bread degradation dataset.
-   - **Computer Vision Diagnostics (`cv_analyzer.py`)**:
-     - Detects fungal and mold colonies (green, blue, dark patches) in HSV color space.
-     - Calculates surface mold coverage percentage (`%`) and counts cluster patches.
-     - Evaluates surface texture roughness (Laplacian variance) and discoloration index.
-     - Produces an annotated diagnostic image with bounding boxes and contour highlights.
-   - **Multimodal Fusion**: Correlates visual mold presence with volatile organic gas levels (`MQ-135`) and fermentation gas (`MQ-2`) to determine:
-     - **Remaining Shelf Life** in hours and days (e.g. `53.5 hours (~2.2 Days)`).
-     - **Freshness Score** (0% - 100%) with animated circular gauge.
-     - **Status Badge** (*Freshly Baked*, *Good Condition*, *Early Staling*, *High Spoilage Risk*, *Spoiled - Mold Detected*).
-     - **Actionable Food Safety Guidance** and projected expiration date/time.
-
-4. **Scan History**:
-   - Automatically archives all snapshots in `scans/` and records a detailed history log on the dashboard.
-
----
-
-## 📁 Project Structure
-
-```
-project/
-├── backend/
-│   ├── app.py                     # FastAPI application serving web UI and API endpoints
-│   ├── arduino_manager.py         # Serial manager (background thread, auto-reconnect, simulation mode)
-│   ├── model.py                   # Multimodal bread shelf life model (ML + CV fusion)
-│   ├── cv_analyzer.py             # Computer Vision pipeline (mold detection & annotation)
-│   ├── camera_service.py          # OpenCV physical camera discovery and snapshot capture
-│   ├── dataset_service.py         # Dataset timeline and sample loader
-│   └── shelf_life_rf.joblib       # Pre-trained Random Forest model
-├── static/
-│   ├── css/
-│   │   └── dashboard.css          # Glassmorphic dark dashboard theme
-│   ├── js/
-│   │   ├── dashboard.js           # UI controller (camera, Arduino polling, prediction rendering)
-│   │   └── camera_manager.js      # WebRTC browser camera feed & device switching
-│   └── index.html                 # Main dashboard interface
-├── bread_dataset/                 # Extracted reference bread dataset
-├── sensor_data.csv                # 70-hour experimental sensor dataset (MQ-135 & MQ-2)
-├── run_dashboard.py               # One-click startup script
-└── README.md
-```
-
----
-
-## 🚀 How to Run the Dashboard
-
-### 1. Launch the Server
-In your terminal, run:
-```bash
+```powershell
+cd C:\Users\Abhyudit\Documents\FoodShelfLife
+python -m pip install -r requirements.txt
 python run_dashboard.py
 ```
-Or directly via Uvicorn:
-```bash
-python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
+
+Open http://localhost:8501. Allow access to the chosen camera (default index 0, verified locally; choose 1 for an attached external camera). Camera frames stay in RAM. The preview refreshes every two seconds. If no camera is available, the demonstration still completes with an explicitly labeled placeholder.
+
+The three sections of the single Run surface select these profiles:
+
+| Click position | Scenario | Simulated storage age |
+| --- | --- | --- |
+| Left | Stale | 74 hours |
+| Middle | Slightly stale | 58 hours |
+| Right | Fresh | 18 hours |
+
+Each run streams 36 placeholder gas readings over three minutes. The trained gas classifier uses the mean of the last six readings; the gas regressor supplies the displayed shelf-life estimate. Model class probabilities refer to the three demo grades. The camera is genuine but display-only in this mode, so clean-looking bread does not override the chosen gas profile. No live serial readings enter the demo. The UI identifies the sensor stream as simulated. Reset clears the session.
+
+## Synthetic dataset and training
+
+`bread_dataset/synth_run1` through `synth_run5` contain 6,910 synthetic sensor rows and 1,152 generated JPEGs. CSV image filenames refer only to generated training images. Raw ADC values are not calibrated gas concentrations. The generator's four source labels (fresh/stale/early mold/heavy mold) are distinct from the three demo grades, which are derived from synthetic spoilage-factor bands at 0.15 and 0.40.
+
+```powershell
+python generate_dataset.py          # optional: regenerate the deterministic synthetic runs
+python train_multimodal_model.py    # train all three models; train_model.py is an alias
+python -m unittest -v test_demo.py test_system.py
 ```
 
-The script will automatically launch your browser to:
-👉 **[http://127.0.0.1:8000](http://127.0.0.1:8000)**
+Runs 1–4 train; all of run 5 is held out. The image pipeline ignores the generator's corner label and carries the most recent synthetic image features forward within each run. All referenced images must exist. The GitHub 16-feature Random Forest regressor is trained on gas and CV features; a gas-only regressor and three-class classifier support the demo. No manually selected storage age is supplied to these predictors.
 
----
+Artifacts:
 
-## 🔌 Arduino Connection Setup
+- `models/bread_demo.joblib`: gas classifier, gas regressor, multimodal regressor, schemas and evaluation.
+- `backend/shelf_life_multimodal.joblib`: compatible GitHub multimodal model bundle.
+- `models/metrics.json`: measured held-out synthetic results.
 
-1. Connect your Arduino Uno/Nano via USB.
-2. In the dashboard's **"Arduino Gas Telemetry"** section:
-   - Ensure the correct COM port is entered (default is `COM5`).
-   - Click **"Scan Ports"** to detect connected Arduino ports.
-   - Click **"Connect Arduino"**.
-3. The dashboard will automatically read incoming serial lines formatted as `mq135,mq2` (e.g., `72,264`) and display live sensor gauges.
-4. If Arduino is not plugged in, the dashboard seamlessly displays simulated readings from your previous experiment.
+The shelf-life target is time until the generator's early-mold boundary. These models are evaluated only on synthetic data; their outputs do not establish whether real bread is safe to eat. The multimodal regressor is trained and saved but the demonstration deliberately uses gas-only inference.
 
----
+## CSV-only collection
 
-## 📷 Camera Operation
+```powershell
+python bread_data_collection.py --port COM5 --interval 300
+python bread_data_collection.py --port COM5 --preview --camera 1
+python bread_data_collection_clock_aligned.py --port COM5
+```
 
-1. **Select Source**: Click **"Laptop Webcam"** or **"External Camera"** (or use the device dropdown).
-2. **Targeting**: Align your bread slice or sample within the center targeting reticle.
-3. **Capture & Analyze**: Click **"📸 Click Photo & Predict Shelf Life"**.
-4. **View Diagnostics**: The dashboard displays the remaining shelf life, animated freshness ring, safety recommendation, and visual inspection overlay highlighting any mold spots.
+Real Arduino input must be `mq135,mq2`, each in the range 0–1023. Invalid/header lines are skipped. Hardware errors are reported; they never silently become simulated readings. CSV rows are flushed as they arrive. Default destination: `data/collected/sensor_data.csv`; use `--output` to select another file. Existing compatible files are appended, with continuing sample numbers and acquisition elapsed time (downtime is excluded). Incompatible schemas are rejected. `--samples N` stops after N new rows. Ctrl+C or Q in the optional preview stops collection and releases devices.
+
+`image_filename` is always empty. No image directory is created and no camera image is written. Camera preview is optional; sensor-only collection needs no webcam. The clock-aligned entry point schedules the first row on the next five-minute boundary by default.
+
+For a hardware-free collector check (explicitly tagged `source=simulated`):
+
+```powershell
+python bread_data_collection.py --simulate --samples 3 --interval 1 --output data/collected/smoke.csv
+```
+
+## Preserved earlier work
+
+`archive/` retains replaced collection/training scripts and old documentation/tests for provenance. The old `static/` FastAPI dashboard, other generation experiments, and nested `bread_dataset/bread_dataset` assets are retained reference material; they are not used by `run_dashboard.py`. The former FastAPI route can save snapshots, so use the consolidated Streamlit launcher for this project's RAM-only camera behavior. No GitHub push is performed by this consolidation.

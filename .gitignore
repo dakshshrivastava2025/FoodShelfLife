@@ -17,3 +17,7 @@ scans/*.jpg
 .env
 venv/
 .venv/
+
+# Consolidated trained artifact and local sensor captures
+!backend/shelf_life_multimodal.joblib
+data/collected/

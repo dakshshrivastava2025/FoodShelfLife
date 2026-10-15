@@ -1,636 +1,119 @@
-import cv2
-import serial
+"""Collect real serial readings to CSV. Camera preview is optional and RAM-only."""
+import argparse
 import csv
-import os
-import time
 from datetime import datetime
+from pathlib import Path
+import time
 
-# ============================================================
-# CONFIGURATION
-# ============================================================
+FIELDS = ['sample_number', 'timestamp', 'hours_since_start', 'mq135', 'mq2',
+          'image_filename', 'camera_index', 'source']
 
-ARDUINO_PORT = "COM5"
-BAUD_RATE = 9600
 
-# TEST MODE:
-CAPTURE_INTERVAL_SECONDS = 10
+def parse_reading(line):
+    parts = line.strip().split(',')
+    if len(parts) != 2:
+        raise ValueError('Expected mq135,mq2')
+    values = tuple(int(part) for part in parts)
+    if any(value < 0 or value > 1023 for value in values):
+        raise ValueError('ADC values must be between 0 and 1023')
+    return values
 
-# For real experiment, change to:
-# CAPTURE_INTERVAL_SECONDS = 10 * 60
 
-RUN_NAME = "run1"
-
-BASE_FOLDER = "bread_dataset"
-RUN_FOLDER = os.path.join(BASE_FOLDER, RUN_NAME)
-IMAGE_FOLDER = os.path.join(RUN_FOLDER, "images")
-CSV_FILE = os.path.join(RUN_FOLDER, "sensor_data.csv")
-
-# ============================================================
-# CREATE FOLDERS
-# ============================================================
-
-os.makedirs(IMAGE_FOLDER, exist_ok=True)
-
-# ============================================================
-# CAMERA SELECTION
-# ============================================================
-
-def select_camera(max_cameras=6):
-
-    print("\n========================================")
-    print("WEBCAM SELECTION")
-    print("========================================")
-
-    backends = [
-        ("MSMF", cv2.CAP_MSMF),
-        ("DSHOW", cv2.CAP_DSHOW)
-    ]
-
-    for index in range(max_cameras):
-
-        print(f"\nChecking camera index {index}...")
-
-        camera_found = False
-
-        for backend_name, backend in backends:
-
-            print(f"Trying index {index} using {backend_name}...")
-
-            camera = cv2.VideoCapture(index, backend)
-
-            if not camera.isOpened():
-
-                print(
-                    f"Index {index} with {backend_name}: "
-                    f"could not open"
-                )
-
-                camera.release()
-                continue
-
-            # Give USB webcam time to initialise
+def collect(args):
+    if args.interval <= 0 or args.samples < 0:
+        raise ValueError('Interval must be positive; sample count must be nonnegative')
+    output = Path(args.output).resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    number, offset = 1, 0.0
+    exists = output.exists() and output.stat().st_size > 0
+    if exists:
+        with output.open(newline='', encoding='utf-8') as handle:
+            reader = csv.DictReader(handle)
+            if reader.fieldnames != FIELDS:
+                raise ValueError('Existing CSV has a different schema; choose another --output')
+            rows = list(reader)
+            if rows:
+                number = int(rows[-1]['sample_number']) + 1
+                offset = float(rows[-1]['hours_since_start']) + args.interval / 3600
+    camera, device = None, None
+    try:
+        if not args.simulate:
+            import serial
+            device = serial.Serial(args.port, args.baud, timeout=1)
             time.sleep(2)
-
-            frame = None
-            success = False
-
-            # Try several times
-            for attempt in range(20):
-
-                ret, test_frame = camera.read()
-
-                if ret and test_frame is not None:
-
-                    frame = test_frame
-                    success = True
-                    break
-
-                time.sleep(0.2)
-
-            if not success:
-
-                print(
-                    f"Index {index} with {backend_name}: "
-                    f"opened but no frame received"
-                )
-
-                camera.release()
-                continue
-
-            camera_found = True
-
-            print(
-                f"Camera {index} works using {backend_name}"
-            )
-
-            # Show live preview
-            while True:
-
-                ret, frame = camera.read()
-
-                if not ret or frame is None:
-                    print("Frame lost.")
-                    break
-
-                preview = frame.copy()
-
-                cv2.putText(
-                    preview,
-                    f"Camera {index} - {backend_name}",
-                    (30, 50),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1,
-                    (255, 255, 255),
-                    2
-                )
-
-                cv2.imshow(
-                    "Camera Preview",
-                    preview
-                )
-
-                # Required to keep preview responsive
-                cv2.waitKey(1)
-
-                # Take input from terminal
-                print(
-                    "\nLook at the preview window."
-                )
-
-                choice = input(
-                    "Is this your USB webcam? "
-                    "[Y/N/Q]: "
-                ).strip().lower()
-
-                if choice == "y":
-
-                    cv2.destroyAllWindows()
-
-                    print(
-                        f"\nSelected camera {index} "
-                        f"using {backend_name}"
-                    )
-
-                    return camera, index
-
-                elif choice == "q":
-
-                    camera.release()
-                    cv2.destroyAllWindows()
-
-                    raise SystemExit(
-                        "Camera selection cancelled."
-                    )
-
+            device.reset_input_buffer()
+        if args.preview:
+            import cv2
+            camera = cv2.VideoCapture(args.camera)
+            if not camera.isOpened():
+                raise RuntimeError(f'Camera {args.camera} unavailable')
+        started = time.monotonic()
+        due = started
+        if args.clock_aligned:
+            due += (-time.time()) % args.interval
+        written = 0
+        with output.open('a', newline='', encoding='utf-8') as handle:
+            writer = csv.DictWriter(handle, fieldnames=FIELDS)
+            if not exists:
+                writer.writeheader()
+                handle.flush()
+            print(f'Writing {output}; source={"simulated" if args.simulate else "serial"}; images are never saved', flush=True)
+            while not args.samples or written < args.samples:
+                if camera is not None:
+                    ok, frame = camera.read()
+                    if ok:
+                        cv2.imshow('Bread preview - RAM only; Q to stop', frame)
+                    if cv2.waitKey(1) & 0xff == ord('q'):
+                        break
+                if time.monotonic() < due:
+                    time.sleep(.02)
+                    continue
+                if args.simulate:
+                    # Explicit smoke-test mode, never silently substitutes for hardware.
+                    values = (80 + written % 5, 250 + written % 7)
                 else:
-
-                    camera.release()
-                    cv2.destroyAllWindows()
-
-                    print(
-                        f"Skipping camera {index}..."
-                    )
-
-                    break
-
-            if camera_found:
-                break
-
-    raise RuntimeError(
-        "No working webcam was selected."
-    )
-
-
-# ============================================================
-# CONNECT TO ARDUINO
-# ============================================================
-
-print("\n========================================")
-print("CONNECTING TO ARDUINO")
-print("========================================")
-
-try:
-
-    arduino = serial.Serial(
-        ARDUINO_PORT,
-        BAUD_RATE,
-        timeout=2
-    )
-
-except serial.SerialException as error:
-
-    print(
-        f"\nERROR: Could not open {ARDUINO_PORT}"
-    )
-
-    print(error)
-
-    print(
-        "\nCheck that:"
-        "\n1. Arduino is connected."
-        "\n2. COM5 is correct."
-        "\n3. Arduino Serial Monitor is CLOSED."
-    )
-
-    raise SystemExit
-
-
-print(
-    f"Arduino connected on {ARDUINO_PORT}"
-)
-
-# Arduino resets after serial connection
-time.sleep(2)
-
-arduino.reset_input_buffer()
-
-
-# ============================================================
-# SELECT USB CAMERA
-# ============================================================
-
-camera, CAMERA_INDEX = select_camera()
-
-# Set preferred resolution
-camera.set(
-    cv2.CAP_PROP_FRAME_WIDTH,
-    1920
-)
-
-camera.set(
-    cv2.CAP_PROP_FRAME_HEIGHT,
-    1080
-)
-
-actual_width = int(
-    camera.get(
-        cv2.CAP_PROP_FRAME_WIDTH
-    )
-)
-
-actual_height = int(
-    camera.get(
-        cv2.CAP_PROP_FRAME_HEIGHT
-    )
-)
-
-print(
-    f"Selected camera resolution: "
-    f"{actual_width} x {actual_height}"
-)
-
-
-# ============================================================
-# CREATE / OPEN CSV
-# ============================================================
-
-file_exists = os.path.exists(
-    CSV_FILE
-)
-
-csv_file = open(
-    CSV_FILE,
-    mode="a",
-    newline="",
-    encoding="utf-8"
-)
-
-csv_writer = csv.writer(
-    csv_file
-)
-
-if not file_exists:
-
-    csv_writer.writerow([
-        "sample_number",
-        "timestamp",
-        "hours_since_start",
-        "mq135",
-        "mq2",
-        "image_filename",
-        "camera_index"
-    ])
-
-    csv_file.flush()
-
-
-# ============================================================
-# SENSOR READING FUNCTION
-# ============================================================
-
-def read_sensor():
-
-    while True:
-
-        try:
-
-            line = (
-                arduino
-                .readline()
-                .decode(
-                    "utf-8",
-                    errors="ignore"
-                )
-                .strip()
-            )
-
-            if not line:
-                continue
-
-            # Ignore Arduino header
-            if line.startswith("MQ135"):
-                continue
-
-            values = line.split(",")
-
-            if len(values) != 2:
-                continue
-
-            mq135 = int(
-                values[0]
-            )
-
-            mq2 = int(
-                values[1]
-            )
-
-            return mq135, mq2
-
-        except ValueError:
-
-            print(
-                "Invalid Arduino reading. Retrying..."
-            )
-
-
-# ============================================================
-# IMAGE CAPTURE FUNCTION
-# ============================================================
-
-def capture_image(filename):
-
-    # Flush a few frames
-    for _ in range(5):
-        camera.read()
-
-    ret, frame = camera.read()
-
-    if not ret or frame is None:
-
-        print(
-            "ERROR: Could not capture camera image."
-        )
-
-        return False
-
-    image_path = os.path.join(
-        IMAGE_FOLDER,
-        filename
-    )
-
-    success = cv2.imwrite(
-        image_path,
-        frame,
-        [
-            cv2.IMWRITE_JPEG_QUALITY,
-            95
-        ]
-    )
-
-    return success
-
-
-# ============================================================
-# OPTIONAL LIVE PREVIEW
-# ============================================================
-
-def show_live_preview():
-
-    ret, frame = camera.read()
-
-    if not ret:
-        return
-
-    preview = frame.copy()
-
-    cv2.putText(
-        preview,
-        f"USB Camera: {CAMERA_INDEX}",
-        (30, 40),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1,
-        (255, 255, 255),
-        2
-    )
-
-    cv2.putText(
-        preview,
-        "Bread Data Collection Running",
-        (30, 80),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
-        (255, 255, 255),
-        2
-    )
-
-    cv2.putText(
-        preview,
-        "Press Q to stop",
-        (30, 120),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
-        (255, 255, 255),
-        2
-    )
-
-    cv2.imshow(
-        "Bread Monitoring",
-        preview
-    )
-
-
-# ============================================================
-# START EXPERIMENT
-# ============================================================
-
-experiment_start = datetime.now()
-
-print("\n========================================")
-print("BREAD DATA COLLECTION STARTED")
-print("========================================")
-print(f"Run              : {RUN_NAME}")
-print(f"Arduino          : {ARDUINO_PORT}")
-print(f"USB Camera       : {CAMERA_INDEX}")
-print(
-    f"Capture interval : "
-    f"{CAPTURE_INTERVAL_SECONDS} seconds"
-)
-print(f"CSV              : {CSV_FILE}")
-print(f"Images           : {IMAGE_FOLDER}")
-print("========================================")
-print("Press Q in camera window to stop.")
-print("Or press CTRL+C in terminal.")
-print("========================================\n")
-
-
-# ============================================================
-# MAIN LOOP
-# ============================================================
-
-sample_number = 1
-last_capture_time = 0
-
-try:
-
-    while True:
-
-        # --------------------------------------------
-        # Keep camera preview alive continuously
-        # --------------------------------------------
-
-        show_live_preview()
-
-        key = cv2.waitKey(1) & 0xFF
-
-        if key == ord("q"):
-            print(
-                "\nStopping data collection..."
-            )
-            break
-
-        current_time = time.time()
-
-        # --------------------------------------------
-        # Capture only when interval has passed
-        # --------------------------------------------
-
-        if (
-            current_time - last_capture_time
-            >= CAPTURE_INTERVAL_SECONDS
-        ):
-
-            cycle_start = time.time()
-
-            now = datetime.now()
-
-            timestamp = now.strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
-
-            filename_timestamp = (
-                now.strftime(
-                    "%Y%m%d_%H%M%S"
-                )
-            )
-
-            hours_since_start = (
-                now - experiment_start
-            ).total_seconds() / 3600
-
-            # ----------------------------------------
-            # READ GAS SENSORS
-            # ----------------------------------------
-
-            mq135, mq2 = read_sensor()
-
-            # ----------------------------------------
-            # IMAGE FILENAME
-            # ----------------------------------------
-
-            image_filename = (
-                f"bread_{RUN_NAME}_"
-                f"{filename_timestamp}.jpg"
-            )
-
-            # ----------------------------------------
-            # CAPTURE IMAGE
-            # ----------------------------------------
-
-            image_saved = capture_image(
-                image_filename
-            )
-
-            if not image_saved:
-                image_filename = "CAMERA_ERROR"
-
-            # ----------------------------------------
-            # SAVE CSV
-            # ----------------------------------------
-
-            csv_writer.writerow([
-                sample_number,
-                timestamp,
-                round(
-                    hours_since_start,
-                    4
-                ),
-                mq135,
-                mq2,
-                image_filename,
-                CAMERA_INDEX
-            ])
-
-            csv_file.flush()
-
-            # ----------------------------------------
-            # TERMINAL OUTPUT
-            # ----------------------------------------
-
-            print(
-                "\n----------------------------------------"
-            )
-
-            print(
-                f"Sample        : {sample_number}"
-            )
-
-            print(
-                f"Time          : {timestamp}"
-            )
-
-            print(
-                f"Hours elapsed : "
-                f"{hours_since_start:.4f}"
-            )
-
-            print(
-                f"MQ135         : {mq135}"
-            )
-
-            print(
-                f"MQ2           : {mq2}"
-            )
-
-            print(
-                f"Image         : {image_filename}"
-            )
-
-            print(
-                "----------------------------------------\n"
-            )
-
-            sample_number += 1
-
-            last_capture_time = current_time
-
-        # Reduce CPU usage slightly
-        time.sleep(0.02)
-
-
-except KeyboardInterrupt:
-
-    print(
-        "\nCTRL+C detected. "
-        "Stopping data collection..."
-    )
-
-
-finally:
-
-    print(
-        "\nClosing devices..."
-    )
-
-    camera.release()
-
-    cv2.destroyAllWindows()
-
-    arduino.close()
-
-    csv_file.close()
-
-    print(
-        "Camera closed."
-    )
-
-    print(
-        "Arduino disconnected."
-    )
-
-    print(
-        "CSV saved."
-    )
-
-    print(
-        "Data collection ended safely."
-    )
+                    device.reset_input_buffer()  # Read current telemetry, not a backlog from the wait.
+                    line = device.readline().decode('utf-8', errors='replace')
+                    try:
+                        values = parse_reading(line)
+                    except ValueError:
+                        continue
+                now = datetime.now().astimezone()
+                writer.writerow(dict(sample_number=number, timestamp=now.isoformat(timespec='seconds'),
+                                     hours_since_start=round(offset + (time.monotonic() - started) / 3600, 6),
+                                     mq135=values[0], mq2=values[1], image_filename='',
+                                     camera_index=args.camera if camera is not None else '',
+                                     source='simulated' if args.simulate else 'serial'))
+                handle.flush()
+                print(number, now.isoformat(timespec='seconds'), *values, flush=True)
+                number += 1
+                written += 1
+                due += args.interval
+                if due < time.monotonic():
+                    due = time.monotonic() + args.interval
+    except KeyboardInterrupt:
+        print('Collection stopped; CSV flushed.')
+    finally:
+        if camera is not None:
+            camera.release()
+            cv2.destroyAllWindows()
+        if device is not None:
+            device.close()
+
+
+def main(clock_aligned=False):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--port', default='COM5')
+    parser.add_argument('--baud', type=int, default=9600)
+    parser.add_argument('--interval', type=float, default=300, help='Seconds between CSV rows')
+    parser.add_argument('--output', default=str(Path(__file__).resolve().parent / 'data' / 'collected' / 'sensor_data.csv'))
+    parser.add_argument('--preview', action='store_true')
+    parser.add_argument('--camera', type=int, default=1)
+    parser.add_argument('--simulate', action='store_true', help='Explicit synthetic smoke-test values')
+    parser.add_argument('--samples', type=int, default=0, help='Stop after N rows; 0 means continuous')
+    parser.add_argument('--clock-aligned', action='store_true', default=clock_aligned)
+    collect(parser.parse_args())
+
+
+if __name__ == '__main__':
+    main()

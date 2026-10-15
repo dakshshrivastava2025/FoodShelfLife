@@ -1,0 +1,16 @@
+{
+  "provenance": "synthetic only; not validated on real bread",
+  "train_runs": [
+    "synth_run1",
+    "synth_run2",
+    "synth_run3",
+    "synth_run4"
+  ],
+  "test_run": "synth_run5",
+  "train_rows": 5357,
+  "test_rows": 1553,
+  "gas_grade_accuracy": 0.9703799098518996,
+  "gas_rsl_mae_hours": 3.7179833158314404,
+  "multimodal_rsl_mae_hours": 1.0816446976026035,
+  "multimodal_rsl_r2": 0.9850185724748368
+}
