@@ -9,6 +9,23 @@ GAS_FEATURES = ["mq135", "mq2", "mq_ratio", "mq_product", "log_mq135",
                 "log_mq2", "gas_severity_index"]
 
 
+MULTIMODAL_FEATURES = ['mq135',
+ 'mq2',
+ 'mq_ratio',
+ 'mq_product',
+ 'log_mq135',
+ 'log_mq2',
+ 'gas_severity_index',
+ 'mold_coverage_pct',
+ 'mold_patches_count',
+ 'discoloration_score',
+ 'texture_roughness',
+ 'mean_blue',
+ 'mean_green',
+ 'mean_red',
+ 'green_red_ratio',
+ 'spoilage_interaction']
+
 def gas_features(mq135, mq2):
     a, b = np.broadcast_arrays(np.asarray(mq135, dtype=float), np.asarray(mq2, dtype=float))
     return np.column_stack([a, b, a / (b + 1e-5), a * b,

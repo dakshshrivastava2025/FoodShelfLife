@@ -30,7 +30,7 @@ Each run streams 36 placeholder gas readings over three minutes. The trained gas
 
 ```powershell
 python generate_dataset.py          # optional: regenerate the deterministic synthetic runs
-python train_multimodal_model.py    # train all three models; train_model.py is an alias
+python train_multimodal_model.py    # train all three models
 python -m unittest -v test_demo.py test_system.py
 ```
 
@@ -39,7 +39,6 @@ Runs 1–4 train; all of run 5 is held out. The image pipeline ignores the gener
 Artifacts:
 
 - `models/bread_demo.joblib`: gas classifier, gas regressor, multimodal regressor, schemas and evaluation.
-- `backend/shelf_life_multimodal.joblib`: compatible GitHub multimodal model bundle.
 - `models/metrics.json`: measured held-out synthetic results.
 
 The shelf-life target is time until the generator's early-mold boundary. These models are evaluated only on synthetic data; their outputs do not establish whether real bread is safe to eat. The multimodal regressor is trained and saved but the demonstration deliberately uses gas-only inference.
@@ -62,6 +61,18 @@ For a hardware-free collector check (explicitly tagged `source=simulated`):
 python bread_data_collection.py --simulate --samples 3 --interval 1 --output data/collected/smoke.csv
 ```
 
-## Preserved earlier work
+## Project layout
 
-`archive/` retains replaced collection/training scripts and old documentation/tests for provenance. The old `static/` FastAPI dashboard, other generation experiments, and nested `bread_dataset/bread_dataset` assets are retained reference material; they are not used by `run_dashboard.py`. The former FastAPI route can save snapshots, so use the consolidated Streamlit launcher for this project's RAM-only camera behavior. No GitHub push is performed by this consolidation.
+- `demo_app.py`: Streamlit frontend, scenario controls, camera preview, results and history.
+- `run_dashboard.py`: frontend launcher.
+- `backend/demo_service.py`: shared gas/multimodal feature schemas and model loading.
+- `backend/cv_analyzer.py`: image feature extraction used during training.
+- `generate_dataset.py`: reproducible synthetic sensor and image generation.
+- `train_multimodal_model.py`: training and held-out evaluation for all three models.
+- `bread_data_collection.py`: CSV-only sensor acquisition and optional camera preview.
+- `bread_data_collection_clock_aligned.py`: scheduled collection entry point.
+- `bread_dataset/synth_run1` through `synth_run5`: active training and evaluation data.
+- `models/`: single trained model bundle and evaluation report.
+- `test_demo.py`, `test_system.py`: frontend and integration checks.
+
+The old web dashboard, nested duplicate project, sample captures, archived experiments, redundant training alias and duplicate model export have been removed from this branch. Earlier versions remain available in Git history.

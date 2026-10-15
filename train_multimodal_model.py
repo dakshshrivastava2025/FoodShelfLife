@@ -8,8 +8,7 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.metrics import accuracy_score, mean_absolute_error, r2_score
 from backend.cv_analyzer import BreadVisionAnalyzer
-from backend.demo_service import GAS_FEATURES, LABELS, gas_features
-from backend.model import BreadShelfLifeModel
+from backend.demo_service import GAS_FEATURES, LABELS, MULTIMODAL_FEATURES, gas_features
 
 ROOT = Path(__file__).resolve().parent
 
@@ -20,7 +19,7 @@ def load_training_data():
     for run in sorted((ROOT / 'bread_dataset').glob('synth_run*')):
         df = pd.read_csv(run / 'sensor_data.csv')
         df['run'] = run.name
-        # Synthetic time until generator's early-mold boundary, not a measured safety endpoint.
+        # Synthetic time until generator's early-mold boundary (spoilage factor 0.40), not a measured safety endpoint.
         crossing = df.loc[df.freshness_label >= 2, 'hours_since_start']
         if crossing.empty:
             raise ValueError(f'{run}: no early-mold endpoint')
@@ -43,7 +42,7 @@ def load_training_data():
         visual = pd.DataFrame(features).ffill().bfill().to_numpy()
         gas = gas_features(df.mq135, df.mq2)
         matrix = np.column_stack([gas, visual, gas[:, 6] * (1 + visual[:, 0] / 10)])
-        for i, col in enumerate(BreadShelfLifeModel.FEATURE_COLS):
+        for i, col in enumerate(MULTIMODAL_FEATURES):
             df[col] = matrix[:, i]
         frames.append(df)
         print(f'{run.name}: {len(df)} synthetic rows, {df.image_filename.notna().sum()} images', flush=True)
@@ -60,7 +59,7 @@ def main():
     config = dict(n_estimators=180, max_depth=12, random_state=42, n_jobs=-1)
     gas = RandomForestClassifier(**config).fit(train[GAS_FEATURES].to_numpy(), train.demo_grade)
     gas_rsl = RandomForestRegressor(**config).fit(train[GAS_FEATURES].to_numpy(), train.remaining_hours)
-    cols = BreadShelfLifeModel.FEATURE_COLS
+    cols = MULTIMODAL_FEATURES
     multimodal = RandomForestRegressor(**config).fit(train[cols].to_numpy(), train.remaining_hours)
     metrics = {
         'provenance': 'synthetic only; not validated on real bread',
@@ -73,10 +72,8 @@ def main():
     }
     (ROOT / 'models').mkdir(exist_ok=True)
     joblib.dump(dict(gas_classifier=gas, gas_regressor=gas_rsl, multimodal=multimodal,
-                     gas_features=GAS_FEATURES, labels=LABELS, metrics=metrics),
+                     gas_features=GAS_FEATURES, multimodal_features=MULTIMODAL_FEATURES, labels=LABELS, metrics=metrics),
                 ROOT / 'models' / 'bread_demo.joblib', compress=3)
-    joblib.dump(dict(model=multimodal, feature_cols=cols, provenance=metrics['provenance'], test_metrics=metrics),
-                ROOT / 'backend' / 'shelf_life_multimodal.joblib', compress=3)
     (ROOT / 'models' / 'metrics.json').write_text(json.dumps(metrics, indent=2), encoding='utf-8')
     print(json.dumps(metrics, indent=2))
 

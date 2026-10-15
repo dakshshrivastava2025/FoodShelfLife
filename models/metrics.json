@@ -10,7 +10,7 @@
   "train_rows": 5357,
   "test_rows": 1553,
   "gas_grade_accuracy": 0.9703799098518996,
-  "gas_rsl_mae_hours": 3.7179833158314404,
+  "gas_rsl_mae_hours": 3.7179833158314413,
   "multimodal_rsl_mae_hours": 1.0816446976026035,
   "multimodal_rsl_r2": 0.9850185724748368
 }

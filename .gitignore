@@ -1,23 +1,14 @@
-# Byte-compiled / optimized / DLL files
+# Python caches
 __pycache__/
 *.py[cod]
-*$py.class
 
-# Excluded models
-backend/shelf_life_multimodal.joblib
-backend/shelf_life_rf.joblib
-
-# Logs and runtime files
+# Logs and collected hardware data
 *.log
-scans/*.jpg
+data/collected/
 
-# IDE and environment
+# Local editor and environment files
 .vscode/
 .idea/
 .env
 venv/
 .venv/
-
-# Consolidated trained artifact and local sensor captures
-!backend/shelf_life_multimodal.joblib
-data/collected/

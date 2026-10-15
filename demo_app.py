@@ -18,7 +18,6 @@ import matplotlib.pyplot as plt
 from PIL import Image, ImageDraw
 
 # ── paths ─────────────────────────────────────────────────────────────────────
-BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 
 # ── constants ─────────────────────────────────────────────────────────────────
 READING_DURATION_SEC = 180   # 3-minute reading window
@@ -199,7 +198,7 @@ st.markdown("""
 try:
     gas_model, shelf_model, model_bundle = load_models()
 except Exception as e:
-    st.error(f"Models not found — run `train_model.py` first.\n\n{e}")
+    st.error(f"Models not found — run `train_multimodal_model.py` first.\n\n{e}")
     st.stop()
 
 # ── session state init ────────────────────────────────────────────────────────
