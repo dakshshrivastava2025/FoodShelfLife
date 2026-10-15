@@ -260,7 +260,7 @@ with tab_demo:
         4. Wait **3 minutes** — do not open the enclosure
         5. Results will appear automatically
         """)
-        
+
         st.markdown("---")
         CAMERA_INDEX = int(st.number_input("Camera device index", min_value=0, max_value=10, value=CAMERA_INDEX))
         show_cam_preview = st.checkbox("Show live webcam preview", value=True, help="Test optical alignment. Captured frames remain in-memory and are never stored to disk.")
@@ -607,4 +607,3 @@ with tab_about:
     """)
     st.markdown("**Held-out synthetic evaluation**")
     st.json(model_bundle['metrics'])
-
