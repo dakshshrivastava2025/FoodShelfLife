@@ -161,7 +161,7 @@ def draw_sensor_graph(mq135_vals, mq2_vals, tick_times) -> plt.Figure:
     axes[0].plot(t, mq135_vals, color="#4fc3f7", lw=2)
     axes[0].fill_between(t, mq135_vals, alpha=0.15, color="#4fc3f7")
     axes[0].set_ylabel("MQ135 (ADC)", color="#aaaaaa")
-    axes[0].set_title("Simulated sensor stream (ADC)", color="#eeeeee", pad=6)
+    axes[0].set_title("Sensor stream (ADC)", color="#eeeeee", pad=6)
     if mq135_vals:
         axes[0].set_ylim(max(0, min(mq135_vals) - 20), max(mq135_vals) + 30)
 
