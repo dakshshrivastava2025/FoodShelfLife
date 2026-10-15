@@ -1,0 +1,19 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Excluded models
+backend/shelf_life_multimodal.joblib
+backend/shelf_life_rf.joblib
+
+# Logs and runtime files
+*.log
+scans/*.jpg
+
+# IDE and environment
+.vscode/
+.idea/
+.env
+venv/
+.venv/
