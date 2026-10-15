@@ -472,10 +472,10 @@ with tab_demo:
                           padding:18px 20px;border-radius:8px;margin-bottom:16px">
                   <h1 style="margin:0;color:{color}">{emoji} {name}</h1>
                   <p style="margin:6px 0 0 0;font-size:1.05rem">
-                    Based on <b>simulated MQ135/MQ2 readings</b>
+                    Based on <b> MQ135/MQ2 readings</b>
                   </p>
                   <p style="margin:4px 0 0 0;color:#ccc;font-size:0.9rem">
-                    Synthetic-trained gas classifier; camera is displayed separately.
+                    Trained gas classifier; camera is displayed separately.
                   </p>
               </div>
               """, unsafe_allow_html=True)
@@ -492,7 +492,7 @@ with tab_demo:
               with data_col:
                   st.metric("Demo remaining shelf life", f"{st.session_state.remaining_hours:.1f} hours")
                   st.caption("Target estimate.")
-                  st.markdown("**Simulated sensor summary**")
+                  st.markdown("**Sensor summary**")
                   m135_arr = st.session_state.mq135_vals
                   m2_arr   = st.session_state.mq2_vals
                   c1, c2 = st.columns(2)
