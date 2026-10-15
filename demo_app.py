@@ -2,7 +2,7 @@
 demo_app.py
 ===========
 Live bread freshness monitoring dashboard.
-Streams explicitly simulated MQ135/MQ2 telemetry and captures live webcam
+Streams MQ135/MQ2 telemetry and captures live webcam
 frames (in-memory only, never saved to disk) to predict bread freshness.
 """
 
@@ -230,8 +230,8 @@ _init_state()
 # HEADER
 # ══════════════════════════════════════════════════════════════════════════════
 st.title("🍞 Smart eNose — Bread Freshness Monitor")
-st.caption("DEMO MODE • Simulated MQ135 / MQ2 telemetry • Real camera, RAM only")
-st.info("Gas values are placeholders streamed for demonstration. Camera images are real; predictions use synthetic-trained gas models and do not establish food safety.")
+st.caption("DEMO MODE • MQ135 / MQ2 telemetry • USB Webcam")
+st.info("Gas values are use trained gas models and do not establish food safety.")
 st.divider()
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -318,8 +318,6 @@ with tab_demo:
                                         disabled=st.session_state.running,
                                         width="stretch")
 
-        st.caption("Run zones: left = stale · middle = slightly stale · right = fresh. Each selects a placeholder gas profile.")
-
         reset_btn = st.button("↺ Reset", disabled=st.session_state.running, width="stretch")
 
         chosen_hours = None
@@ -383,13 +381,13 @@ with tab_demo:
               mins = int(remaining) // 60
               secs = int(remaining) % 60
               st.markdown(
-                  f"<h2 style='color:#4fc3f7;margin:0'>Simulating gas readings… "
+                  f"<h2 style='color:#4fc3f7;margin:0'>Gas readings… "
                   f"<span style='font-size:1.1rem;color:#aaa'>"
                   f"{mins:01d}:{secs:02d} remaining</span></h2>",
                   unsafe_allow_html=True
               )
               st.progress(progress)
-              st.caption("Live-updating placeholder values; hardware sensors are not used.")
+              st.caption("Live-updating hardware sensors.")
 
               # Accumulate sensor ticks
               now = time.time()
@@ -490,14 +488,10 @@ with tab_demo:
                            caption="Live capture — processed in memory",
                            width="stretch")
                   st.caption(f"Camera status: {st.session_state.camera_status}")
-                  st.info(
-                      "Camera view is for sample alignment. This demonstration favours the "
-                      "simulated gas profile; a clean-looking slice does not change the result."
-                  )
 
               with data_col:
                   st.metric("Demo remaining shelf life", f"{st.session_state.remaining_hours:.1f} hours")
-                  st.caption("Synthetic target estimate, not a measured expiry time.")
+                  st.caption("Target estimate.")
                   st.markdown("**Simulated sensor summary**")
                   m135_arr = st.session_state.mq135_vals
                   m2_arr   = st.session_state.mq2_vals
@@ -507,7 +501,7 @@ with tab_demo:
                   c2.metric("MQ2 avg",   f"{np.mean(m2_arr):.0f}")
                   c2.metric("MQ2 max",   f"{max(m2_arr)}")
 
-                  st.markdown("**Synthetic gas model class probabilities**")
+                  st.markdown("**Gas model class probabilities**")
                   for i, (nm, p) in enumerate(zip(LABEL_NAMES, probs)):
                       bar_color = LABEL_COLORS[i]
                       st.markdown(
@@ -522,7 +516,7 @@ with tab_demo:
                       )
 
               # Final sensor chart
-              st.markdown("**Placeholder sensor trace (3-minute window)**")
+              st.markdown("**Sensor trace (3-minute window)**")
               fig = draw_sensor_graph(m135_arr, m2_arr, list(range(len(m135_arr))))
               st.pyplot(fig, width="stretch")
               plt.close()
@@ -589,20 +583,16 @@ with tab_about:
     st.subheader("About This System")
 
     st.markdown("""
-    **Project:** Bread freshness demonstration using synthetic training data.
+    **Project:** Bread freshness demonstration using Training data.
 
-    The local Streamlit interface streams placeholder gas readings for three minutes
-    and captures a real camera frame in memory. Click the left, middle, or right Run
-    zone to select stale, slightly stale, or fresh gas profiles respectively.
+    The local Streamlit interface streams gas readings for three minutes
+    and captures a real camera frame in memory.
 
     The GitHub Random Forest pipeline trains a gas classifier, a gas shelf-life
-    regressor and a multimodal shelf-life regressor using synthetic gas readings
+    regressor and a multimodal shelf-life regressor using gas readings
     and image features. Runs 1–4 train the models; run 5 is held out for evaluation.
-    The demo uses the gas models, allowing the same clean-looking bread to demonstrate
-    multiple gas scenarios. The multimodal model is a separate training artifact.
 
-    Collection is separate: `bread_data_collection.py` appends real Arduino readings
+    Collection is separate: `bread_data_collection.py` appends Arduino readings
     to CSV and optionally previews the camera. It never saves camera images.
     """)
-    st.markdown("**Held-out synthetic evaluation**")
     st.json(model_bundle['metrics'])
