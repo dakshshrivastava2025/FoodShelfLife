@@ -1350,3 +1350,246 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* ============================================================
+   REAL-TIME SENSOR STREAM CHART & 1-MINUTE SAMPLING
+   ============================================================ */
+.card-chart-switch-area {
+  position: relative;
+  min-height: 190px;
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.stream-chart-box {
+  width: 100%;
+  height: 190px;
+  position: relative;
+}
+
+.sensor-stream-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(180deg, rgba(248, 249, 253, 0.6) 0%, rgba(243, 244, 249, 0.9) 100%);
+  border: 1px solid var(--border-subtle);
+}
+
+/* 1-Minute Sampling Countdown Banner */
+.sampling-countdown-bar {
+  background: linear-gradient(135deg, rgba(85, 66, 246, 0.08) 0%, rgba(79, 195, 247, 0.12) 100%);
+  border: 1px solid rgba(85, 66, 246, 0.25);
+  border-radius: var(--radius-md);
+  padding: 0.65rem 0.9rem;
+  margin-bottom: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  animation: fadeIn 0.3s ease;
+}
+
+.countdown-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.82rem;
+  color: var(--text-main);
+  flex-wrap: wrap;
+}
+
+.countdown-pulse-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background-color: #4fc3f7;
+  box-shadow: 0 0 0 0 rgba(79, 195, 247, 0.7);
+  animation: pulseCountdown 1.4s infinite;
+}
+
+@keyframes pulseCountdown {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(79, 195, 247, 0.7); }
+  70% { transform: scale(1.15); box-shadow: 0 0 0 6px rgba(79, 195, 247, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(79, 195, 247, 0); }
+}
+
+#countdown-time-rem {
+  color: var(--primary);
+  font-weight: 800;
+  font-size: 0.92rem;
+}
+
+.countdown-tick-counter {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.btn-fast-forward {
+  margin-left: auto;
+  background: var(--primary);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-full);
+  padding: 0.25rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 2px 6px var(--primary-glow);
+  transition: all var(--transition-fast);
+}
+
+.btn-fast-forward:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+}
+
+.countdown-progress-track {
+  width: 100%;
+  height: 6px;
+  background-color: rgba(0, 0, 0, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.countdown-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4fc3f7 0%, #5542f6 100%);
+  border-radius: 3px;
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Chart Switcher Buttons */
+.chart-mode-toggles {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.chart-toggle-pill {
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-full);
+  padding: 0.25rem 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.chart-toggle-pill.active {
+  background-color: var(--primary);
+  color: #ffffff;
+  border-color: var(--primary);
+  box-shadow: 0 2px 8px var(--primary-glow);
+}
+
+/* ============================================================
+   MULTI-ZONE SCAN BUTTON (LEFT = STALE, RIGHT = FRESH)
+   ============================================================ */
+.multi-zone-btn-wrapper {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+}
+
+.multi-zone-btn {
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+  cursor: pointer;
+}
+
+.multi-zone-btn .btn-zone-indicator {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 33%;
+  z-index: 2;
+  cursor: pointer;
+}
+
+.multi-zone-btn .btn-zone-indicator.zone-left {
+  left: 0;
+}
+
+.multi-zone-btn .btn-zone-indicator.zone-right {
+  right: 0;
+}
+
+.multi-zone-btn .btn-zone-content {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Hover Zone Indicator Pill */
+.zone-hover-pill {
+  position: absolute;
+  bottom: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(17, 24, 39, 0.92);
+  color: #ffffff;
+  padding: 0.15rem 0.55rem;
+  border-radius: var(--radius-full);
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.multi-zone-btn-wrapper:hover .zone-hover-pill {
+  opacity: 1;
+  transform: translateX(-50%) translateY(2px);
+}
+
+/* Secret Zones Hint Strip below Camera */
+.secret-zones-hint-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+  padding: 0 0.2rem;
+  flex-wrap: wrap;
+}
+
+.zone-hint-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.18rem 0.55rem;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  cursor: default;
+}
+
+.zone-hint-badge.stale-hint {
+  background-color: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.zone-hint-badge.mid-hint {
+  background-color: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.zone-hint-badge.fresh-hint {
+  background-color: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.zone-hint-note {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  margin-left: auto;
+}
+

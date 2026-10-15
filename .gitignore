@@ -17,3 +17,5 @@ scans/*.jpg
 .env
 venv/
 .venv/
+codex_ai_feature_test/
+

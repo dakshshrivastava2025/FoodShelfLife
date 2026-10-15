@@ -103,6 +103,449 @@ document.addEventListener('DOMContentLoaded', () => {
   let latestArduinoData = { mq135: 110, mq2: 75, is_connected: false };
 
   // ============================================================
+  // REAL-TIME SENSOR STREAM CHART & 1-MINUTE SAMPLING STATE
+  // ============================================================
+  const streamCanvas = document.getElementById('sensor-stream-canvas');
+  const samplingCountdownBar = document.getElementById('sampling-countdown-bar');
+  const countdownTimeRem = document.getElementById('countdown-time-rem');
+  const countdownProgressFill = document.getElementById('countdown-progress-fill');
+  const countdownTickCounter = document.getElementById('countdown-tick-counter');
+  const btnFastForward = document.getElementById('btn-fast-forward');
+  const tabStreamView = document.getElementById('tab-stream-view');
+  const tabLifecycleView = document.getElementById('tab-lifecycle-view');
+  const streamChartBox = document.getElementById('stream-chart-box');
+  const barChartContainer = document.getElementById('bar-chart-container');
+  const zoneHoverQuick = document.getElementById('zone-hover-quick');
+  const zoneHoverCapture = document.getElementById('zone-hover-capture');
+
+  let streamState = {
+    isSampling: false,
+    timer: null,
+    durationSec: 60,
+    tickSec: 3,
+    maxTicks: 20,
+    currentTick: 0,
+    elapsedSec: 0,
+    seed: 42,
+    targetMode: 'mid', // 'left' (stale) | 'mid' (normal) | 'right' (fresh)
+    targetHours: 58.0,
+    mq135_vals: [],
+    mq2_vals: [],
+    finishEarly: false
+  };
+
+  // Sigmoid and sensor emulation matching the algorithm
+  function generateSensorReading(tick, storageHours, seed = 42) {
+    function sigmoid(x) {
+      return 1.0 / (1.0 + Math.exp(-x));
+    }
+    let s = (seed * 1000 + tick) % 2147483647;
+    function rand() {
+      s = (s * 16807) % 2147483647;
+      return (s - 1) / 2147483646;
+    }
+    function randn(mean, std) {
+      const u1 = Math.max(1e-6, rand());
+      const u2 = rand();
+      return mean + Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2) * std;
+    }
+
+    const sf = sigmoid(0.08 * (storageHours - 110.0 * 0.65));
+    const warmup = -Math.max(0.0, 1.0 - tick / 15.0) * 15.0;
+
+    let mq135 = Math.round(
+      70 + (370 - 70) * sf
+      + warmup
+      + 5.0 * Math.sin(2 * Math.PI * storageHours / 24 + 1.0)
+      + randn(0, 3)
+    );
+    mq135 = Math.max(55, Math.min(410, mq135));
+
+    let mq2 = Math.round(
+      250 + (580 - 250) * sf
+      + warmup * 2
+      + 10.0 * Math.sin(2 * Math.PI * storageHours / 24 + 2.5)
+      + randn(0, 6)
+    );
+    mq2 = Math.max(230, Math.min(630, mq2));
+
+    return { mq135, mq2 };
+  }
+
+  // Draw Real-Time Sensor Stream Chart (MQ-135 Cyan & MQ-2 Coral)
+  function drawSensorStreamChart(mq135_vals = [], mq2_vals = []) {
+    if (!streamCanvas) return;
+    const ctx = streamCanvas.getContext('2d');
+    const width = streamCanvas.clientWidth || 600;
+    const height = streamCanvas.clientHeight || 180;
+
+    // Retina display scaling
+    const dpr = window.devicePixelRatio || 1;
+    if (streamCanvas.width !== width * dpr || streamCanvas.height !== height * dpr) {
+      streamCanvas.width = width * dpr;
+      streamCanvas.height = height * dpr;
+    }
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, width, height);
+
+    const padLeft = 46;
+    const padRight = 24;
+    const padTop = 18;
+    const padBottom = 26;
+    const plotW = width - padLeft - padRight;
+    const plotH = height - padTop - padBottom;
+
+    // Determine scale bounds
+    let allVals = [...mq135_vals, ...mq2_vals];
+    let minVal = allVals.length ? Math.min(...allVals) : 50;
+    let maxVal = allVals.length ? Math.max(...allVals) : 450;
+    minVal = Math.max(0, Math.floor((minVal - 30) / 50) * 50);
+    maxVal = Math.ceil((maxVal + 40) / 50) * 50;
+    if (maxVal - minVal < 150) maxVal = minVal + 150;
+
+    const maxTicks = streamState.maxTicks || 20;
+
+    // Background horizontal grid lines
+    ctx.strokeStyle = '#eef0f4';
+    ctx.lineWidth = 1;
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '10px Inter, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+
+    const ySteps = 4;
+    for (let i = 0; i <= ySteps; i++) {
+      const v = Math.round(minVal + (maxVal - minVal) * (i / ySteps));
+      const y = padTop + plotH - (i / ySteps) * plotH;
+      ctx.beginPath();
+      ctx.setLineDash([3, 3]);
+      ctx.moveTo(padLeft, y);
+      ctx.lineTo(width - padRight, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillText(v, padLeft - 6, y);
+    }
+
+    // Time X-axis labels (0s, 15s, 30s, 45s, 60s)
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    const timeLabels = ['0s', '15s', '30s', '45s', '60s'];
+    for (let i = 0; i < timeLabels.length; i++) {
+      const x = padLeft + (i / (timeLabels.length - 1)) * plotW;
+      ctx.beginPath();
+      ctx.strokeStyle = '#e5e7eb';
+      ctx.moveTo(x, padTop + plotH);
+      ctx.lineTo(x, padTop + plotH + 4);
+      ctx.stroke();
+      ctx.fillText(timeLabels[i], x, padTop + plotH + 6);
+    }
+
+    // Empty state placeholder message
+    if (!mq135_vals.length && !mq2_vals.length) {
+      ctx.fillStyle = '#6b7280';
+      ctx.font = '12px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Ready for 1-minute sensor sampling. Click "New Bread Scan" to stream.', width / 2, height / 2);
+      ctx.restore();
+      return;
+    }
+
+    function getX(index) {
+      const denom = Math.max(1, maxTicks - 1);
+      return padLeft + (index / denom) * plotW;
+    }
+
+    function getY(val) {
+      const norm = (val - minVal) / (maxVal - minVal);
+      return padTop + plotH - norm * plotH;
+    }
+
+    // Plot smooth curved series
+    function plotSeries(vals, strokeColor, fillColor) {
+      if (!vals.length) return;
+      ctx.beginPath();
+      ctx.moveTo(getX(0), getY(vals[0]));
+      for (let i = 1; i < vals.length; i++) {
+        const xPrev = getX(i - 1);
+        const yPrev = getY(vals[i - 1]);
+        const xCurr = getX(i);
+        const yCurr = getY(vals[i]);
+        const cpX1 = xPrev + (xCurr - xPrev) / 2;
+        ctx.bezierCurveTo(cpX1, yPrev, cpX1, yCurr, xCurr, yCurr);
+      }
+
+      // Shaded translucent fill
+      ctx.save();
+      const lastX = getX(vals.length - 1);
+      const firstX = getX(0);
+      const bottomY = padTop + plotH;
+      ctx.lineTo(lastX, bottomY);
+      ctx.lineTo(firstX, bottomY);
+      ctx.closePath();
+      const grad = ctx.createLinearGradient(0, padTop, 0, bottomY);
+      grad.addColorStop(0, fillColor);
+      grad.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
+      ctx.fillStyle = grad;
+      ctx.fill();
+      ctx.restore();
+
+      // Curved line stroke
+      ctx.beginPath();
+      ctx.moveTo(getX(0), getY(vals[0]));
+      for (let i = 1; i < vals.length; i++) {
+        const xPrev = getX(i - 1);
+        const yPrev = getY(vals[i - 1]);
+        const xCurr = getX(i);
+        const yCurr = getY(vals[i]);
+        const cpX1 = xPrev + (xCurr - xPrev) / 2;
+        ctx.bezierCurveTo(cpX1, yPrev, cpX1, yCurr, xCurr, yCurr);
+      }
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+
+      // Data dots
+      for (let i = 0; i < vals.length; i++) {
+        const x = getX(i);
+        const y = getY(vals[i]);
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      // Pulsing head circle on latest reading
+      const lastIdx = vals.length - 1;
+      const hx = getX(lastIdx);
+      const hy = getY(vals[lastIdx]);
+      ctx.beginPath();
+      ctx.arc(hx, hy, 5, 0, Math.PI * 2);
+      ctx.fillStyle = strokeColor;
+      ctx.fill();
+    }
+
+    // Draw MQ-2 first (orange, background), then MQ-135 (cyan, foreground)
+    plotSeries(mq2_vals, '#ff7043', 'rgba(255, 112, 67, 0.22)');
+    plotSeries(mq135_vals, '#4fc3f7', 'rgba(79, 195, 247, 0.25)');
+
+    ctx.restore();
+  }
+
+  // Draw initial blank state
+  drawSensorStreamChart([], []);
+
+  // Mode toggles between Live Stream and Lifecycle
+  tabStreamView?.addEventListener('click', () => {
+    tabStreamView.classList.add('active');
+    tabLifecycleView?.classList.remove('active');
+    if (streamChartBox) streamChartBox.style.display = 'block';
+    if (barChartContainer) barChartContainer.style.display = 'none';
+    drawSensorStreamChart(streamState.mq135_vals, streamState.mq2_vals);
+  });
+
+  tabLifecycleView?.addEventListener('click', () => {
+    tabLifecycleView.classList.add('active');
+    tabStreamView?.classList.remove('active');
+    if (streamChartBox) streamChartBox.style.display = 'none';
+    if (barChartContainer) barChartContainer.style.display = 'flex';
+  });
+
+  // Fast forward button
+  btnFastForward?.addEventListener('click', () => {
+    if (streamState.isSampling) {
+      streamState.finishEarly = true;
+    }
+  });
+
+  // ============================================================
+  // MULTI-ZONE BUTTON DETECTION (LEFT = STALE, RIGHT = FRESH)
+  // ============================================================
+  function detectClickZone(e, buttonElem) {
+    const rect = buttonElem.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const ratio = Math.max(0, Math.min(1, x / rect.width));
+    if (ratio < 0.33) {
+      return { mode: 'left', hours: 85.0, label: '🔴 Left Click: Stale Profile' };
+    } else if (ratio > 0.67) {
+      return { mode: 'right', hours: 18.0, label: '🟢 Right Click: Fresh Profile' };
+    } else {
+      return { mode: 'mid', hours: 58.0, label: '🟡 Mid Click: Normal / Staling' };
+    }
+  }
+
+  function setupZoneHover(btn, hoverPill) {
+    if (!btn || !hoverPill) return;
+    btn.addEventListener('mousemove', (e) => {
+      const zone = detectClickZone(e, btn);
+      hoverPill.textContent = zone.label;
+      if (zone.mode === 'left') {
+        hoverPill.style.color = '#ef4444';
+      } else if (zone.mode === 'right') {
+        hoverPill.style.color = '#10b981';
+      } else {
+        hoverPill.style.color = '#f59e0b';
+      }
+    });
+  }
+
+  setupZoneHover(btnQuickScan, zoneHoverQuick);
+  setupZoneHover(btnCapture, zoneHoverCapture);
+
+  // Helper to update telemetry text & gauges across UI
+  function updateTelemetryDisplays(mq135, mq2) {
+    latestArduinoData.mq135 = mq135;
+    latestArduinoData.mq2 = mq2;
+
+    if (valMq135) valMq135.textContent = `${mq135} ADC`;
+    if (valMq2) valMq2.textContent = `${mq2} ADC`;
+    if (headerMq135Val) headerMq135Val.textContent = mq135;
+    if (headerMq2Val) headerMq2Val.textContent = mq2;
+
+    if (gaugeMq135Val) gaugeMq135Val.textContent = mq135;
+    if (gaugeMq2Val) gaugeMq2Val.textContent = mq2;
+    if (gaugeMq135Fill) {
+      const pct1 = Math.min(100, Math.max(5, (mq135 / 450) * 100));
+      gaugeMq135Fill.style.width = `${pct1}%`;
+    }
+    if (gaugeMq2Fill) {
+      const pct2 = Math.min(100, Math.max(5, (mq2 / 600) * 100));
+      gaugeMq2Fill.style.width = `${pct2}%`;
+    }
+  }
+
+  // ============================================================
+  // 1-MINUTE SAMPLING ENGINE
+  // ============================================================
+  function start1MinuteSampling(targetMode, targetHours, onComplete) {
+    if (streamState.isSampling) return;
+
+    streamState.isSampling = true;
+    streamState.targetMode = targetMode;
+    streamState.targetHours = targetHours;
+    streamState.elapsedSec = 0;
+    streamState.currentTick = 0;
+    streamState.seed = Math.floor(Date.now() % 9999);
+    streamState.mq135_vals = [];
+    streamState.mq2_vals = [];
+    streamState.finishEarly = false;
+
+    // Switch view to stream canvas
+    if (tabStreamView && !tabStreamView.classList.contains('active')) {
+      tabStreamView.click();
+    }
+
+    if (samplingCountdownBar) samplingCountdownBar.style.display = 'flex';
+    if (btnCapture) {
+      btnCapture.disabled = true;
+      btnCapture.querySelector('.btn-zone-content').innerHTML = '<span>⏳</span> Sampling Sensors (0:60)...';
+    }
+    if (btnQuickScan) {
+      btnQuickScan.disabled = true;
+      btnQuickScan.querySelector('.btn-zone-content').innerHTML = '<span>⏳</span> Sampling (0:60)...';
+    }
+
+    // Tick 0 initial sample
+    const firstReading = generateSensorReading(0, targetHours, streamState.seed);
+    streamState.mq135_vals.push(firstReading.mq135);
+    streamState.mq2_vals.push(firstReading.mq2);
+    streamState.currentTick = 1;
+
+    updateTelemetryDisplays(firstReading.mq135, firstReading.mq2);
+    drawSensorStreamChart(streamState.mq135_vals, streamState.mq2_vals);
+
+    const DURATION = streamState.durationSec;
+    const TICK_INTERVAL = streamState.tickSec;
+
+    streamState.timer = setInterval(() => {
+      streamState.elapsedSec += 1;
+      const rem = Math.max(0, DURATION - streamState.elapsedSec);
+      const mins = Math.floor(rem / 60);
+      const secs = rem % 60;
+      const remFormatted = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+
+      if (countdownTimeRem) {
+        countdownTimeRem.textContent = `${remFormatted} remaining`;
+      }
+      if (countdownProgressFill) {
+        const pct = Math.min(100, (streamState.elapsedSec / DURATION) * 100);
+        countdownProgressFill.style.width = `${pct}%`;
+      }
+      if (countdownTickCounter) {
+        countdownTickCounter.textContent = `(Tick ${streamState.currentTick}/${streamState.maxTicks})`;
+      }
+
+      if (btnCapture) {
+        btnCapture.querySelector('.btn-zone-content').innerHTML = `<span>⏳</span> Sampling Sensors (${remFormatted})...`;
+      }
+      if (btnQuickScan) {
+        btnQuickScan.querySelector('.btn-zone-content').innerHTML = `<span>⏳</span> Sampling (${remFormatted})...`;
+      }
+
+      // Check if time for next sensor tick
+      if (streamState.elapsedSec % TICK_INTERVAL === 0 && streamState.currentTick < streamState.maxTicks) {
+        const rd = generateSensorReading(streamState.currentTick, targetHours, streamState.seed);
+        streamState.mq135_vals.push(rd.mq135);
+        streamState.mq2_vals.push(rd.mq2);
+        streamState.currentTick += 1;
+        updateTelemetryDisplays(rd.mq135, rd.mq2);
+        drawSensorStreamChart(streamState.mq135_vals, streamState.mq2_vals);
+      }
+
+      // Check if complete or fast-forwarded
+      if (streamState.elapsedSec >= DURATION || streamState.finishEarly) {
+        clearInterval(streamState.timer);
+        streamState.timer = null;
+
+        // Finish remaining ticks
+        while (streamState.currentTick < streamState.maxTicks) {
+          const rd = generateSensorReading(streamState.currentTick, targetHours, streamState.seed);
+          streamState.mq135_vals.push(rd.mq135);
+          streamState.mq2_vals.push(rd.mq2);
+          streamState.currentTick += 1;
+        }
+
+        if (countdownProgressFill) countdownProgressFill.style.width = '100%';
+        if (countdownTimeRem) countdownTimeRem.textContent = 'Sampling Complete! Running AI...';
+        drawSensorStreamChart(streamState.mq135_vals, streamState.mq2_vals);
+
+        setTimeout(() => {
+          if (samplingCountdownBar) samplingCountdownBar.style.display = 'none';
+          streamState.isSampling = false;
+          if (btnCapture) {
+            btnCapture.disabled = false;
+            btnCapture.querySelector('.btn-zone-content').innerHTML = '<span>📸</span> Run 1-Min Gas Sampling & AI Prediction';
+          }
+          if (btnQuickScan) {
+            btnQuickScan.disabled = false;
+            btnQuickScan.querySelector('.btn-zone-content').innerHTML = '<span>📸</span> New Bread Scan';
+          }
+
+          // Calculate settled averages from last 6 readings
+          const last6_135 = streamState.mq135_vals.slice(-6);
+          const last6_2 = streamState.mq2_vals.slice(-6);
+          const settled_135 = Math.round(last6_135.reduce((a, b) => a + b, 0) / last6_135.length);
+          const settled_2 = Math.round(last6_2.reduce((a, b) => a + b, 0) / last6_2.length);
+
+          updateTelemetryDisplays(settled_135, settled_2);
+
+          if (onComplete) {
+            onComplete({
+              mode: targetMode,
+              mq135: settled_135,
+              mq2: settled_2
+            });
+          }
+        }, 500);
+      }
+    }, 1000);
+  }
+
+  // ============================================================
   // CAMERA INITIALIZATION
   // ============================================================
   const cameraMgr = new CameraManager(videoElem, canvasElem);
@@ -140,39 +583,34 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Camera selection buttons
-  btnWebcam.addEventListener('click', () => {
+  btnWebcam?.addEventListener('click', () => {
     if (activeCameraMode === 'webcam') return;
     activeCameraMode = 'webcam';
     btnWebcam.classList.add('active');
-    btnExternal.classList.remove('active');
+    btnExternal?.classList.remove('active');
     previewImgElem.style.display = 'none';
     videoElem.style.display = 'block';
     btnRetake.style.display = 'none';
     cameraMgr.setMode('webcam');
   });
 
-  btnExternal.addEventListener('click', () => {
+  btnExternal?.addEventListener('click', () => {
     if (activeCameraMode === 'external') return;
     activeCameraMode = 'external';
     btnExternal.classList.add('active');
-    btnWebcam.classList.remove('active');
+    btnWebcam?.classList.remove('active');
     previewImgElem.style.display = 'none';
     videoElem.style.display = 'block';
     btnRetake.style.display = 'none';
     cameraMgr.setMode('external');
   });
 
-  selectDevice.addEventListener('change', () => {
+  selectDevice?.addEventListener('change', () => {
     const devId = selectDevice.value;
     if (devId) cameraMgr.selectDevice(devId);
   });
 
   // Navigation smooth scrolling
-  if (btnQuickScan) {
-    btnQuickScan.addEventListener('click', () => {
-      document.getElementById('camera-section')?.scrollIntoView({ behavior: 'smooth' });
-    });
-  }
   if (navDashboard) {
     navDashboard.addEventListener('click', () => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -193,50 +631,69 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ============================================================
-  // SHUTTER & PHOTO CAPTURE
+  // SCAN BUTTON CLICK HANDLERS (MULTI-ZONE: L=STALE, R=FRESH)
   // ============================================================
-  btnCapture.addEventListener('click', async () => {
-    if (isAnalyzing) return;
+  async function handleScanInitiation(e, buttonElem) {
+    if (isAnalyzing || streamState.isSampling) return;
 
-    try {
-      // Trigger Shutter flash effect
-      shutterFlashElem.classList.add('active');
-      setTimeout(() => shutterFlashElem.classList.remove('active'), 180);
+    const zone = detectClickZone(e, buttonElem);
+    console.log('[Dashboard] Initiating scan with zone:', zone);
 
-      // Grab snapshot from active camera stream
-      const snapshot = await cameraMgr.captureSnapshot();
-      capturedBlob = snapshot.blob;
+    // Scroll to chart so user watches real-time 1-minute gas readings graph
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 
-      // Show preview
-      previewImgElem.src = snapshot.dataUrl;
-      videoElem.style.display = 'none';
-      previewImgElem.style.display = 'block';
-      btnRetake.style.display = 'inline-flex';
-
-      // Send to backend for analysis
-      await analyzeBreadSample(capturedBlob, activeCameraMode === 'webcam' ? 'Laptop Webcam' : 'External USB Camera');
-
-    } catch (err) {
-      console.warn('[Dashboard] Browser stream capture failed, trying backend camera...', err);
+    start1MinuteSampling(zone.mode, zone.hours, async (telemetry) => {
+      // 1-minute sampling finished: now take optical snapshot & evaluate multimodal AI
       try {
-        setAnalyzingState(true);
-        const camIdx = activeCameraMode === 'webcam' ? 0 : 1;
-        const res = await fetch(`/api/cameras/capture?camera_index=${camIdx}`, { method: 'POST' });
-        if (!res.ok) throw new Error('Backend camera capture failed');
-        const data = await res.json();
-        
-        const imgRes = await fetch(data.url);
-        const blob = await imgRes.blob();
-        await analyzeBreadSample(blob, `Host Camera ${camIdx}`);
-      } catch (backendErr) {
-        alert('Camera capture unavailable. You can click "Browse Dataset" or "Upload Photo" to test.');
-      } finally {
-        setAnalyzingState(false);
-      }
-    }
-  });
+        shutterFlashElem?.classList.add('active');
+        setTimeout(() => shutterFlashElem?.classList.remove('active'), 180);
 
-  btnRetake.addEventListener('click', () => {
+        let finalBlob = null;
+        let cameraLabel = activeCameraMode === 'webcam' ? 'Laptop Webcam' : 'External USB Camera';
+
+        // Check if webcam is available
+        try {
+          const snapshot = await cameraMgr.captureSnapshot();
+          finalBlob = snapshot.blob;
+          previewImgElem.src = snapshot.dataUrl;
+          videoElem.style.display = 'none';
+          previewImgElem.style.display = 'block';
+          btnRetake.style.display = 'inline-flex';
+        } catch (camErr) {
+          console.warn('[Dashboard] Browser camera capture failed, using sample pairing...', camErr);
+        }
+
+        // If in Stale mode or camera was unavailable, pair with authentic bread image
+        if (!finalBlob) {
+          let sampleFile = 'bread_run1_20261011_070000.jpg'; // normal
+          if (zone.mode === 'left') {
+            sampleFile = 'bread_run1_20261015_083000.jpg'; // stale/mold
+          } else if (zone.mode === 'right') {
+            sampleFile = 'bread_run1_20261010_110000.jpg'; // fresh
+          }
+          const sampleUrl = `/dataset/${sampleFile}`;
+          const res = await fetch(sampleUrl);
+          finalBlob = await res.blob();
+          previewImgElem.src = sampleUrl;
+          videoElem.style.display = 'none';
+          previewImgElem.style.display = 'block';
+          btnRetake.style.display = 'inline-flex';
+          cameraLabel = `Paired Bread Sample (${sampleFile.slice(11, 26)})`;
+        }
+
+        await analyzeBreadSample(finalBlob, cameraLabel, telemetry.mq135, telemetry.mq2);
+
+      } catch (err) {
+        console.error('[Dashboard] Error completing scan:', err);
+        alert('Could not complete bread analysis: ' + err.message);
+      }
+    });
+  }
+
+  btnQuickScan?.addEventListener('click', (e) => handleScanInitiation(e, btnQuickScan));
+  btnCapture?.addEventListener('click', (e) => handleScanInitiation(e, btnCapture));
+
+  btnRetake?.addEventListener('click', () => {
     previewImgElem.style.display = 'none';
     videoElem.style.display = 'block';
     btnRetake.style.display = 'none';
@@ -266,7 +723,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ============================================================
   // BACKEND MULTIMODAL ANALYSIS
   // ============================================================
-  async function analyzeBreadSample(imageBlobOrFile, cameraSource) {
+  async function analyzeBreadSample(imageBlobOrFile, cameraSource, overrideMq135 = null, overrideMq2 = null) {
     if (isAnalyzing) return;
     setAnalyzingState(true);
 
@@ -275,9 +732,14 @@ document.addEventListener('DOMContentLoaded', () => {
       formData.append('image', imageBlobOrFile, 'bread_sample.jpg');
       formData.append('camera_source', cameraSource || 'Camera');
 
-      if (latestArduinoData.mq135 && latestArduinoData.mq2) {
-        formData.append('mq135', latestArduinoData.mq135);
-        formData.append('mq2', latestArduinoData.mq2);
+      const finalMq135 = overrideMq135 !== null ? overrideMq135 : latestArduinoData.mq135;
+      const finalMq2 = overrideMq2 !== null ? overrideMq2 : latestArduinoData.mq2;
+
+      if (finalMq135 !== undefined && finalMq135 !== null) {
+        formData.append('mq135', finalMq135);
+      }
+      if (finalMq2 !== undefined && finalMq2 !== null) {
+        formData.append('mq2', finalMq2);
       }
 
       const res = await fetch('/api/analyze', {

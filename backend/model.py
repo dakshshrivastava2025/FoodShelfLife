@@ -115,13 +115,15 @@ class BreadShelfLifeModel:
             try:
                 # If model expects 16 features
                 if hasattr(self.rf_model, "n_features_in_") and self.rf_model.n_features_in_ == 16:
-                    raw_predicted_hours = float(self.rf_model.predict(feature_vector)[0])
+                    df_vec = pd.DataFrame(feature_vector, columns=self.FEATURE_COLS)
+                    raw_predicted_hours = float(self.rf_model.predict(df_vec)[0])
                 elif hasattr(self.rf_model, "n_features_in_") and self.rf_model.n_features_in_ == 5:
                     # Legacy 5 features
                     legacy_vec = np.array([[mq135_f, mq2_f, mq_ratio, mq_product, mq135_f**2]])
                     raw_predicted_hours = float(self.rf_model.predict(legacy_vec)[0])
                 else:
-                    raw_predicted_hours = float(self.rf_model.predict(feature_vector)[0])
+                    df_vec = pd.DataFrame(feature_vector, columns=self.FEATURE_COLS)
+                    raw_predicted_hours = float(self.rf_model.predict(df_vec)[0])
             except Exception as e:
                 print(f"[BreadShelfLifeModel] Predict error ({e}), using analytical estimation.")
                 decay = np.clip((mq135_f - 110.0) / 600.0, 0.0, 1.0)

@@ -144,10 +144,14 @@
           <button type="button" class="btn-figma-secondary" id="btn-upload-image">
             <span>⬆️</span> Upload Photo
           </button>
-          <input type="file" id="file-upload-input" accept="image/*" style="display:none;" />
-          <button type="button" class="btn-figma-primary" id="btn-quick-scan">
-            <span>📸</span> New Bread Scan
-          </button>
+          <div class="multi-zone-btn-wrapper" id="quick-scan-wrapper">
+            <button type="button" class="btn-figma-primary multi-zone-btn" id="btn-quick-scan" title="Click Left: Stale | Mid: Normal | Right: Fresh">
+              <span class="btn-zone-indicator zone-left"></span>
+              <span class="btn-zone-content"><span>📸</span> New Bread Scan</span>
+              <span class="btn-zone-indicator zone-right"></span>
+            </button>
+            <div class="zone-hover-pill" id="zone-hover-quick">Target: Normal</div>
+          </div>
         </div>
       </div>
 
@@ -173,74 +177,100 @@
             </span>
           </div>
 
-          <!-- Double Bar Chart (Purple MQ-135 vs Light-Purple MQ-2) -->
-          <div class="bar-chart-container" id="bar-chart-container">
-            <div class="bar-col-group">
-              <div class="bar-pair">
-                <div class="bar-pill primary" style="height: 35%;"></div>
-                <div class="bar-pill secondary" style="height: 25%;"></div>
+          <!-- Double Bar Chart vs Live Real-Time Stream Chart -->
+          <div class="card-chart-switch-area">
+            <!-- Sampling Countdown Banner (active during 1-min test) -->
+            <div id="sampling-countdown-bar" class="sampling-countdown-bar" style="display: none;">
+              <div class="countdown-badge-row">
+                <span class="countdown-pulse-dot"></span>
+                <span id="countdown-label">Sampling Gas Sensors...</span>
+                <strong id="countdown-time-rem">1:00 remaining</strong>
+                <span class="countdown-tick-counter" id="countdown-tick-counter">(Tick 0/20)</span>
+                <button type="button" id="btn-fast-forward" class="btn-fast-forward" title="Complete sampling immediately">⚡ Finish Now</button>
               </div>
-              <span class="bar-label">0h</span>
+              <div class="countdown-progress-track">
+                <div id="countdown-progress-fill" class="countdown-progress-fill" style="width: 0%;"></div>
+              </div>
             </div>
-            <div class="bar-col-group">
-              <div class="bar-pair">
-                <div class="bar-pill primary" style="height: 42%;"></div>
-                <div class="bar-pill secondary" style="height: 30%;"></div>
-              </div>
-              <span class="bar-label">10h</span>
+
+            <!-- Live Stream Canvas Chart (1-Minute sampling window) -->
+            <div id="stream-chart-box" class="stream-chart-box">
+              <canvas id="sensor-stream-canvas" class="sensor-stream-canvas" width="600" height="180"></canvas>
             </div>
-            <div class="bar-col-group">
-              <div class="bar-pair">
-                <div class="bar-pill primary" style="height: 50%;"></div>
-                <div class="bar-pill secondary" style="height: 38%;"></div>
+
+            <!-- Static 70h Lifecycle Double Bar Chart (hidden by default or switchable) -->
+            <div class="bar-chart-container" id="bar-chart-container" style="display: none;">
+              <div class="bar-col-group">
+                <div class="bar-pair">
+                  <div class="bar-pill primary" style="height: 35%;"></div>
+                  <div class="bar-pill secondary" style="height: 25%;"></div>
+                </div>
+                <span class="bar-label">0h</span>
               </div>
-              <span class="bar-label">20h</span>
-            </div>
-            <div class="bar-col-group">
-              <div class="bar-pair">
-                <div class="bar-pill primary" style="height: 60%;"></div>
-                <div class="bar-pill secondary" style="height: 48%;"></div>
+              <div class="bar-col-group">
+                <div class="bar-pair">
+                  <div class="bar-pill primary" style="height: 42%;"></div>
+                  <div class="bar-pill secondary" style="height: 30%;"></div>
+                </div>
+                <span class="bar-label">10h</span>
               </div>
-              <span class="bar-label">30h</span>
-            </div>
-            <div class="bar-col-group">
-              <div class="bar-pair">
-                <div class="bar-pill primary" style="height: 72%;"></div>
-                <div class="bar-pill secondary" style="height: 58%;"></div>
+              <div class="bar-col-group">
+                <div class="bar-pair">
+                  <div class="bar-pill primary" style="height: 50%;"></div>
+                  <div class="bar-pill secondary" style="height: 38%;"></div>
+                </div>
+                <span class="bar-label">20h</span>
               </div>
-              <span class="bar-label">40h</span>
-            </div>
-            <div class="bar-col-group">
-              <div class="bar-pair">
-                <div class="bar-pill primary" style="height: 85%;"></div>
-                <div class="bar-pill secondary" style="height: 70%;"></div>
+              <div class="bar-col-group">
+                <div class="bar-pair">
+                  <div class="bar-pill primary" style="height: 60%;"></div>
+                  <div class="bar-pill secondary" style="height: 48%;"></div>
+                </div>
+                <span class="bar-label">30h</span>
               </div>
-              <span class="bar-label">50h</span>
-            </div>
-            <div class="bar-col-group">
-              <div class="bar-pair">
-                <div class="bar-pill primary" style="height: 95%;"></div>
-                <div class="bar-pill secondary" style="height: 82%;"></div>
+              <div class="bar-col-group">
+                <div class="bar-pair">
+                  <div class="bar-pill primary" style="height: 72%;"></div>
+                  <div class="bar-pill secondary" style="height: 58%;"></div>
+                </div>
+                <span class="bar-label">40h</span>
               </div>
-              <span class="bar-label">60h</span>
-            </div>
-            <div class="bar-col-group">
-              <div class="bar-pair">
-                <div class="bar-pill primary" style="height: 100%;"></div>
-                <div class="bar-pill secondary" style="height: 90%;"></div>
+              <div class="bar-col-group">
+                <div class="bar-pair">
+                  <div class="bar-pill primary" style="height: 85%;"></div>
+                  <div class="bar-pill secondary" style="height: 70%;"></div>
+                </div>
+                <span class="bar-label">50h</span>
               </div>
-              <span class="bar-label">70h</span>
+              <div class="bar-col-group">
+                <div class="bar-pair">
+                  <div class="bar-pill primary" style="height: 95%;"></div>
+                  <div class="bar-pill secondary" style="height: 82%;"></div>
+                </div>
+                <span class="bar-label">60h</span>
+              </div>
+              <div class="bar-col-group">
+                <div class="bar-pair">
+                  <div class="bar-pill primary" style="height: 100%;"></div>
+                  <div class="bar-pill secondary" style="height: 90%;"></div>
+                </div>
+                <span class="bar-label">70h</span>
+              </div>
             </div>
           </div>
 
           <div class="chart-legend-row">
             <div class="legend-item">
-              <span class="legend-dot primary"></span>
+              <span class="legend-dot" style="background:#4fc3f7;"></span>
               <span>MQ-135 (Air Quality ADC)</span>
             </div>
             <div class="legend-item">
-              <span class="legend-dot secondary"></span>
-              <span>MQ-2 (VOC / Hydrocarbon ADC)</span>
+              <span class="legend-dot" style="background:#ff7043;"></span>
+              <span>MQ-2 (VOC / Ferment ADC)</span>
+            </div>
+            <div class="chart-mode-toggles">
+              <button type="button" class="chart-toggle-pill active" id="tab-stream-view">📈 Live Stream</button>
+              <button type="button" class="chart-toggle-pill" id="tab-lifecycle-view">📊 70h Lifecycle</button>
             </div>
           </div>
         </div>
@@ -467,12 +497,24 @@
 
           <!-- Capture Action Buttons -->
           <div class="capture-action-row">
-            <button type="button" class="btn-big-capture" id="btn-capture">
-              <span>📸</span> Click Photo & Predict Shelf Life
-            </button>
+            <div class="multi-zone-btn-wrapper" style="flex: 1;">
+              <button type="button" class="btn-big-capture multi-zone-btn" id="btn-capture" title="Click Left: Stale (🔴) | Mid: Normal (🟡) | Right: Fresh (🟢)">
+                <span class="btn-zone-indicator zone-left"></span>
+                <span class="btn-zone-content"><span>📸</span> Run 1-Min Gas Sampling & AI Prediction</span>
+                <span class="btn-zone-indicator zone-right"></span>
+              </button>
+              <div class="zone-hover-pill" id="zone-hover-capture">Target: Normal</div>
+            </div>
             <button type="button" class="btn-retake-pill" id="btn-retake">
               <span>🔄</span> Retake
             </button>
+          </div>
+
+          <div class="secret-zones-hint-row">
+            <span class="zone-hint-badge stale-hint" title="Click left side of button">🔴 Left: Stale</span>
+            <span class="zone-hint-badge mid-hint" title="Click middle of button">🟡 Mid: Normal</span>
+            <span class="zone-hint-badge fresh-hint" title="Click right side of button">🟢 Right: Fresh</span>
+            <span class="zone-hint-note">Click position selects target sample profile</span>
           </div>
 
           <!-- Hardware Dropdown & Alt Inputs -->
