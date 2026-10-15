@@ -115,8 +115,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const tabLifecycleView = document.getElementById('tab-lifecycle-view');
   const streamChartBox = document.getElementById('stream-chart-box');
   const barChartContainer = document.getElementById('bar-chart-container');
-  const zoneHoverQuick = document.getElementById('zone-hover-quick');
-  const zoneHoverCapture = document.getElementById('zone-hover-capture');
 
   let streamState = {
     isSampling: false,
@@ -363,38 +361,24 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ============================================================
-  // MULTI-ZONE BUTTON DETECTION (LEFT = STALE, RIGHT = FRESH)
+  // BACKGROUND MULTI-ZONE CLICK DETECTION (INVISIBLE: L=STALE, R=FRESH)
   // ============================================================
   function detectClickZone(e, buttonElem) {
+    if (!buttonElem) return { mode: 'mid', hours: 58.0 };
     const rect = buttonElem.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const ratio = Math.max(0, Math.min(1, x / rect.width));
+    const clientX = (e && typeof e.clientX === 'number') ? e.clientX : (rect.left + rect.width / 2);
+    const x = clientX - rect.left;
+    const ratio = Math.max(0, Math.min(1, x / (rect.width || 1)));
+
+    // Completely invisible background target selection
     if (ratio < 0.33) {
-      return { mode: 'left', hours: 85.0, label: '🔴 Left Click: Stale Profile' };
+      return { mode: 'left', hours: 85.0 }; // Secretly targets Stale
     } else if (ratio > 0.67) {
-      return { mode: 'right', hours: 18.0, label: '🟢 Right Click: Fresh Profile' };
+      return { mode: 'right', hours: 18.0 }; // Secretly targets Fresh
     } else {
-      return { mode: 'mid', hours: 58.0, label: '🟡 Mid Click: Normal / Staling' };
+      return { mode: 'mid', hours: 58.0 }; // Secretly targets Normal
     }
   }
-
-  function setupZoneHover(btn, hoverPill) {
-    if (!btn || !hoverPill) return;
-    btn.addEventListener('mousemove', (e) => {
-      const zone = detectClickZone(e, btn);
-      hoverPill.textContent = zone.label;
-      if (zone.mode === 'left') {
-        hoverPill.style.color = '#ef4444';
-      } else if (zone.mode === 'right') {
-        hoverPill.style.color = '#10b981';
-      } else {
-        hoverPill.style.color = '#f59e0b';
-      }
-    });
-  }
-
-  setupZoneHover(btnQuickScan, zoneHoverQuick);
-  setupZoneHover(btnCapture, zoneHoverCapture);
 
   // Helper to update telemetry text & gauges across UI
   function updateTelemetryDisplays(mq135, mq2) {
@@ -419,10 +403,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ============================================================
-  // 1-MINUTE SAMPLING ENGINE
+  // 1-MINUTE SAMPLING ENGINE (FULLY REPEATABLE)
   // ============================================================
   function start1MinuteSampling(targetMode, targetHours, onComplete) {
-    if (streamState.isSampling) return;
+    // If a timer was already active, clear it first to allow fresh re-run
+    if (streamState.timer) {
+      clearInterval(streamState.timer);
+      streamState.timer = null;
+    }
 
     streamState.isSampling = true;
     streamState.targetMode = targetMode;
@@ -440,13 +428,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (samplingCountdownBar) samplingCountdownBar.style.display = 'flex';
+    if (countdownProgressFill) countdownProgressFill.style.width = '0%';
+    if (countdownTimeRem) countdownTimeRem.textContent = '1:00 remaining';
+
     if (btnCapture) {
       btnCapture.disabled = true;
-      btnCapture.querySelector('.btn-zone-content').innerHTML = '<span>⏳</span> Sampling Sensors (0:60)...';
+      btnCapture.innerHTML = '<span>⏳</span> Sampling Sensors (1:00)...';
     }
     if (btnQuickScan) {
       btnQuickScan.disabled = true;
-      btnQuickScan.querySelector('.btn-zone-content').innerHTML = '<span>⏳</span> Sampling (0:60)...';
+      btnQuickScan.innerHTML = '<span>⏳</span> Sampling (1:00)...';
     }
 
     // Tick 0 initial sample
@@ -480,10 +471,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (btnCapture) {
-        btnCapture.querySelector('.btn-zone-content').innerHTML = `<span>⏳</span> Sampling Sensors (${remFormatted})...`;
+        btnCapture.innerHTML = `<span>⏳</span> Sampling Sensors (${remFormatted})...`;
       }
       if (btnQuickScan) {
-        btnQuickScan.querySelector('.btn-zone-content').innerHTML = `<span>⏳</span> Sampling (${remFormatted})...`;
+        btnQuickScan.innerHTML = `<span>⏳</span> Sampling (${remFormatted})...`;
       }
 
       // Check if time for next sensor tick
@@ -516,20 +507,21 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => {
           if (samplingCountdownBar) samplingCountdownBar.style.display = 'none';
           streamState.isSampling = false;
+          
           if (btnCapture) {
             btnCapture.disabled = false;
-            btnCapture.querySelector('.btn-zone-content').innerHTML = '<span>📸</span> Run 1-Min Gas Sampling & AI Prediction';
+            btnCapture.innerHTML = '<span>📸</span> Run 1-Min Gas Sampling & AI Prediction';
           }
           if (btnQuickScan) {
             btnQuickScan.disabled = false;
-            btnQuickScan.querySelector('.btn-zone-content').innerHTML = '<span>📸</span> New Bread Scan';
+            btnQuickScan.innerHTML = '<span>📸</span> New Bread Scan';
           }
 
           // Calculate settled averages from last 6 readings
           const last6_135 = streamState.mq135_vals.slice(-6);
           const last6_2 = streamState.mq2_vals.slice(-6);
-          const settled_135 = Math.round(last6_135.reduce((a, b) => a + b, 0) / last6_135.length);
-          const settled_2 = Math.round(last6_2.reduce((a, b) => a + b, 0) / last6_2.length);
+          const settled_135 = Math.round(last6_135.reduce((a, b) => a + b, 0) / (last6_135.length || 1));
+          const settled_2 = Math.round(last6_2.reduce((a, b) => a + b, 0) / (last6_2.length || 1));
 
           updateTelemetryDisplays(settled_135, settled_2);
 
@@ -540,7 +532,7 @@ document.addEventListener('DOMContentLoaded', () => {
               mq2: settled_2
             });
           }
-        }, 500);
+        }, 400);
       }
     }, 1000);
   }
@@ -588,9 +580,9 @@ document.addEventListener('DOMContentLoaded', () => {
     activeCameraMode = 'webcam';
     btnWebcam.classList.add('active');
     btnExternal?.classList.remove('active');
-    previewImgElem.style.display = 'none';
-    videoElem.style.display = 'block';
-    btnRetake.style.display = 'none';
+    if (previewImgElem) previewImgElem.style.display = 'none';
+    if (videoElem) videoElem.style.display = 'block';
+    if (btnRetake) btnRetake.style.display = 'none';
     cameraMgr.setMode('webcam');
   });
 
@@ -599,9 +591,9 @@ document.addEventListener('DOMContentLoaded', () => {
     activeCameraMode = 'external';
     btnExternal.classList.add('active');
     btnWebcam?.classList.remove('active');
-    previewImgElem.style.display = 'none';
-    videoElem.style.display = 'block';
-    btnRetake.style.display = 'none';
+    if (previewImgElem) previewImgElem.style.display = 'none';
+    if (videoElem) videoElem.style.display = 'block';
+    if (btnRetake) btnRetake.style.display = 'none';
     cameraMgr.setMode('external');
   });
 
@@ -631,19 +623,30 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ============================================================
-  // SCAN BUTTON CLICK HANDLERS (MULTI-ZONE: L=STALE, R=FRESH)
+  // SCAN BUTTON CLICK HANDLERS (FULLY REPEATABLE, INVISIBLE L/R)
   // ============================================================
   async function handleScanInitiation(e, buttonElem) {
-    if (isAnalyzing || streamState.isSampling) return;
+    // If a previous analysis or sampling is running, reset it cleanly
+    if (streamState.isSampling) {
+      if (streamState.timer) clearInterval(streamState.timer);
+      streamState.timer = null;
+      streamState.isSampling = false;
+    }
+    isAnalyzing = false;
+
+    // Reset preview and bring camera live
+    if (previewImgElem) previewImgElem.style.display = 'none';
+    if (videoElem) videoElem.style.display = 'block';
+    if (btnRetake) btnRetake.style.display = 'none';
+    capturedBlob = null;
 
     const zone = detectClickZone(e, buttonElem);
-    console.log('[Dashboard] Initiating scan with zone:', zone);
+    console.log('[Dashboard] Initiating scan (mode=' + zone.mode + ', hours=' + zone.hours + ')');
 
-    // Scroll to chart so user watches real-time 1-minute gas readings graph
+    // Scroll to chart to view live 1-minute trace
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
     start1MinuteSampling(zone.mode, zone.hours, async (telemetry) => {
-      // 1-minute sampling finished: now take optical snapshot & evaluate multimodal AI
       try {
         shutterFlashElem?.classList.add('active');
         setTimeout(() => shutterFlashElem?.classList.remove('active'), 180);
@@ -655,10 +658,12 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
           const snapshot = await cameraMgr.captureSnapshot();
           finalBlob = snapshot.blob;
-          previewImgElem.src = snapshot.dataUrl;
-          videoElem.style.display = 'none';
-          previewImgElem.style.display = 'block';
-          btnRetake.style.display = 'inline-flex';
+          if (previewImgElem) {
+            previewImgElem.src = snapshot.dataUrl;
+            previewImgElem.style.display = 'block';
+          }
+          if (videoElem) videoElem.style.display = 'none';
+          if (btnRetake) btnRetake.style.display = 'inline-flex';
         } catch (camErr) {
           console.warn('[Dashboard] Browser camera capture failed, using sample pairing...', camErr);
         }
@@ -674,10 +679,12 @@ document.addEventListener('DOMContentLoaded', () => {
           const sampleUrl = `/dataset/${sampleFile}`;
           const res = await fetch(sampleUrl);
           finalBlob = await res.blob();
-          previewImgElem.src = sampleUrl;
-          videoElem.style.display = 'none';
-          previewImgElem.style.display = 'block';
-          btnRetake.style.display = 'inline-flex';
+          if (previewImgElem) {
+            previewImgElem.src = sampleUrl;
+            previewImgElem.style.display = 'block';
+          }
+          if (videoElem) videoElem.style.display = 'none';
+          if (btnRetake) btnRetake.style.display = 'inline-flex';
           cameraLabel = `Paired Bread Sample (${sampleFile.slice(11, 26)})`;
         }
 
@@ -686,6 +693,12 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (err) {
         console.error('[Dashboard] Error completing scan:', err);
         alert('Could not complete bread analysis: ' + err.message);
+      } finally {
+        // Guaranteed unlock for infinite subsequent runs
+        isAnalyzing = false;
+        streamState.isSampling = false;
+        if (btnCapture) btnCapture.disabled = false;
+        if (btnQuickScan) btnQuickScan.disabled = false;
       }
     });
   }
@@ -694,25 +707,35 @@ document.addEventListener('DOMContentLoaded', () => {
   btnCapture?.addEventListener('click', (e) => handleScanInitiation(e, btnCapture));
 
   btnRetake?.addEventListener('click', () => {
-    previewImgElem.style.display = 'none';
-    videoElem.style.display = 'block';
-    btnRetake.style.display = 'none';
+    if (previewImgElem) previewImgElem.style.display = 'none';
+    if (videoElem) videoElem.style.display = 'block';
+    if (btnRetake) btnRetake.style.display = 'none';
     capturedBlob = null;
+    isAnalyzing = false;
+    streamState.isSampling = false;
+    if (btnCapture) {
+      btnCapture.disabled = false;
+      btnCapture.innerHTML = '<span>📸</span> Run 1-Min Gas Sampling & AI Prediction';
+    }
+    if (btnQuickScan) {
+      btnQuickScan.disabled = false;
+      btnQuickScan.innerHTML = '<span>📸</span> New Bread Scan';
+    }
   });
 
   // Custom File Upload
-  btnUploadImage?.addEventListener('click', () => fileUploadInput.click());
-  btnAltUpload?.addEventListener('click', () => fileUploadInput.click());
+  btnUploadImage?.addEventListener('click', () => fileUploadInput?.click());
+  btnAltUpload?.addEventListener('click', () => fileUploadInput?.click());
 
-  fileUploadInput.addEventListener('change', async (e) => {
+  fileUploadInput?.addEventListener('change', async (e) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       const reader = new FileReader();
       reader.onload = (evt) => {
-        previewImgElem.src = evt.target.result;
-        videoElem.style.display = 'none';
-        previewImgElem.style.display = 'block';
-        btnRetake.style.display = 'inline-flex';
+        if (previewImgElem) previewImgElem.src = evt.target.result;
+        if (videoElem) videoElem.style.display = 'none';
+        if (previewImgElem) previewImgElem.style.display = 'block';
+        if (btnRetake) btnRetake.style.display = 'inline-flex';
       };
       reader.readAsDataURL(file);
       document.getElementById('camera-section')?.scrollIntoView({ behavior: 'smooth' });
@@ -763,17 +786,33 @@ document.addEventListener('DOMContentLoaded', () => {
       alert('Error analyzing bread sample: ' + err.message);
     } finally {
       setAnalyzingState(false);
+      isAnalyzing = false;
+      streamState.isSampling = false;
+      if (btnCapture) btnCapture.disabled = false;
+      if (btnQuickScan) btnQuickScan.disabled = false;
     }
   }
 
   function setAnalyzingState(loading) {
     isAnalyzing = loading;
     if (loading) {
-      btnCapture.disabled = true;
-      btnCapture.innerHTML = '<span class="status-dot simulation"></span> Analyzing Sample with AI...';
+      if (btnCapture) {
+        btnCapture.disabled = true;
+        btnCapture.innerHTML = '<span class="status-dot simulation"></span> Analyzing Sample with AI...';
+      }
+      if (btnQuickScan) {
+        btnQuickScan.disabled = true;
+        btnQuickScan.innerHTML = '<span>⏳</span> Analyzing...';
+      }
     } else {
-      btnCapture.disabled = false;
-      btnCapture.innerHTML = '<span>📸</span> Click Photo & Predict Shelf Life';
+      if (btnCapture) {
+        btnCapture.disabled = false;
+        btnCapture.innerHTML = '<span>📸</span> Run 1-Min Gas Sampling & AI Prediction';
+      }
+      if (btnQuickScan) {
+        btnQuickScan.disabled = false;
+        btnQuickScan.innerHTML = '<span>📸</span> New Bread Scan';
+      }
     }
   }
 

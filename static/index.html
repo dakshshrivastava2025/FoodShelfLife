@@ -144,14 +144,10 @@
           <button type="button" class="btn-figma-secondary" id="btn-upload-image">
             <span>⬆️</span> Upload Photo
           </button>
-          <div class="multi-zone-btn-wrapper" id="quick-scan-wrapper">
-            <button type="button" class="btn-figma-primary multi-zone-btn" id="btn-quick-scan" title="Click Left: Stale | Mid: Normal | Right: Fresh">
-              <span class="btn-zone-indicator zone-left"></span>
-              <span class="btn-zone-content"><span>📸</span> New Bread Scan</span>
-              <span class="btn-zone-indicator zone-right"></span>
-            </button>
-            <div class="zone-hover-pill" id="zone-hover-quick">Target: Normal</div>
-          </div>
+          <input type="file" id="file-upload-input" accept="image/*" style="display:none;" />
+          <button type="button" class="btn-figma-primary" id="btn-quick-scan">
+            <span>📸</span> New Bread Scan
+          </button>
         </div>
       </div>
 
@@ -497,24 +493,12 @@
 
           <!-- Capture Action Buttons -->
           <div class="capture-action-row">
-            <div class="multi-zone-btn-wrapper" style="flex: 1;">
-              <button type="button" class="btn-big-capture multi-zone-btn" id="btn-capture" title="Click Left: Stale (🔴) | Mid: Normal (🟡) | Right: Fresh (🟢)">
-                <span class="btn-zone-indicator zone-left"></span>
-                <span class="btn-zone-content"><span>📸</span> Run 1-Min Gas Sampling & AI Prediction</span>
-                <span class="btn-zone-indicator zone-right"></span>
-              </button>
-              <div class="zone-hover-pill" id="zone-hover-capture">Target: Normal</div>
-            </div>
+            <button type="button" class="btn-big-capture" id="btn-capture">
+              <span>📸</span> Run 1-Min Gas Sampling & AI Prediction
+            </button>
             <button type="button" class="btn-retake-pill" id="btn-retake">
               <span>🔄</span> Retake
             </button>
-          </div>
-
-          <div class="secret-zones-hint-row">
-            <span class="zone-hint-badge stale-hint" title="Click left side of button">🔴 Left: Stale</span>
-            <span class="zone-hint-badge mid-hint" title="Click middle of button">🟡 Mid: Normal</span>
-            <span class="zone-hint-badge fresh-hint" title="Click right side of button">🟢 Right: Fresh</span>
-            <span class="zone-hint-note">Click position selects target sample profile</span>
           </div>
 
           <!-- Hardware Dropdown & Alt Inputs -->
